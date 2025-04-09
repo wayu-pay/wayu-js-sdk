@@ -1,0 +1,31 @@
+name: Publish Package to npm
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+' # Trigger on version tags like v1.0.0, v0.1.2 etc.
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x' # Specify the Node.js version you want to use (e.g., latest LTS)
+          registry-url: 'https://registry.npmjs.org/' # Point to the official npm registry
+
+      - name: Install dependencies
+        run: npm ci # Use clean install for reliability
+
+      # Optional: Add build step here if your package needs building before publishing
+      # - name: Build package
+      #   run: npm run build
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # Use the secret token 
