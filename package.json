@@ -1,6 +1,6 @@
 {
   "name": "wayu-js-sdk",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.1-alpha.0",
   "description": "The official Wayu JavaScript SDK for generating HMAC-SHA256 authentication signatures.",
   "main": "src/index.js",
   "scripts": {
