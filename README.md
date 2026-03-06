@@ -1,15 +1,17 @@
 # Wayu JS SDK
 
-A lightweight JavaScript SDK for generating HMAC-SHA256 signatures, typically used for authenticating API requests.
+The official Wayu Pay JavaScript SDK for accepting payments in Venezuela (Pago Móvil and C2P). Generate payment links, receive webhook notifications, and manage multi-merchant payments.
 
-[![npm version](https://badge.fury.io/js/wayu-js-sdk.svg)](https://badge.fury.io/js/wayu-js-sdk) <!-- Placeholder - Replace 'wayu-js-sdk' if package name differs -->
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) <!-- Assuming MIT License -->
+[![npm version](https://badge.fury.io/js/wayu-js-sdk.svg)](https://badge.fury.io/js/wayu-js-sdk)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Overview
 
-This SDK provides a simple interface to generate time-sensitive HMAC-SHA256 signatures. It takes a public key (identifier) and a secret key, combines the public key with the current timestamp to create a message, and then signs this message using the secret key with the HMAC-SHA256 algorithm. The resulting signature (in hexadecimal format) and the timestamp can then be sent, for example, in request headers for server-side validation.
+Wayu Pay lets you accept payments in Venezuela with a simple API. This SDK handles authentication (HMAC-SHA256 signatures), payment link generation, and webhook signature verification.
 
-This method is commonly used to verify the authenticity and integrity of a request and to prevent replay attacks.
+- **Payment Links**: Generate checkout URLs in USD or VES
+- **Webhooks**: Verify and process real-time payment notifications
+- **Multi-Merchant**: Route payments to different merchants from a single integration
 
 ## Installation
 
@@ -21,104 +23,145 @@ yarn add wayu-js-sdk
 pnpm add wayu-js-sdk
 ```
 
-*(Note: Replace `wayu-js-sdk` with the actual package name if you publish it under a different name.)*
-
 ## Usage
 
-First, import the SDK:
+### Initialize the client
 
 ```javascript
-// CommonJS (Node.js default)
-const wayu = require('wayu-js-sdk');
+// CommonJS
+const WayuPay = require('wayu-js-sdk');
 
-// If you prefer direct class access:
-// const { Wayu } = require('wayu-js-sdk');
+// ESM
+import WayuPay from 'wayu-js-sdk';
+
+const wayu = new WayuPay({
+  publicKey: 'pk_sbox_...',
+  secretKey: 'sk_sbox_...',
+});
+
+// Optional: use sandbox explicitly or override base URL
+const wayuProd = new WayuPay({
+  publicKey: 'pk_live_...',
+  secretKey: 'sk_live_...',
+  sandbox: false, // or baseUrl: 'https://services-wayu-partners-production.up.railway.app'
+});
 ```
 
-Next, initialize the SDK with your public key and secret key:
+### Generate a payment link
 
 ```javascript
-const publicKey = 'YOUR_PUBLIC_KEY';    // Provided by the service you're authenticating with
-const secretKey = 'YOUR_SECRET_KEY'; // Keep this secure!
+const result = await wayu.checkout.generatePaymentUrl({
+  amount: { value: 25.0, currency: 'USD' },
+  product_name: 'Plan Pro',
+  product_description: 'Suscripción mensual',
+});
 
-try {
-  const wayuClient = wayu(publicKey, secretKey);
+// Save the transactionId in your system
+await saveTransaction(result.transactionId);
 
-  // Or using the class directly:
-  // const wayuClient = new Wayu(publicKey, secretKey);
-
-} catch (error) {
-  console.error('Initialization failed:', error.message);
-}
+// Redirect the user to checkout
+// window.location.href = result.generatePaymentLink;
+console.log(result.generatePaymentLink);
+console.log(result.transactionId);
 ```
 
-Now, you can generate a signature:
+### Multi-merchant
 
 ```javascript
-if (wayuClient) {
-  try {
-    const { signature, timestamp } = wayuClient.generateSignature();
+const result = await wayu.checkout.generatePaymentUrl({
+  amount: { value: 50.0, currency: 'USD' },
+  product_name: 'Producto del Merchant',
+  product_description: 'El pago va directo al merchant',
+  merchant_id: 'merch_001',
+});
+```
 
-    console.log('Generated Signature (hex):', signature);
-    console.log('Timestamp Used:', timestamp);
+### Verify webhook signatures
 
-    // Example: Use these in an API request header
-    const headers = {
-      'X-Auth-Key': publicKey,
-      'X-Auth-Timestamp': timestamp,
-      'X-Auth-Signature': signature,
-      'Content-Type': 'application/json'
-    };
+The SDK supports two header schemes for backward compatibility:
 
-    // fetch('/api/resource', { headers: headers, ... })
+1. **X-Webhook-Signature** (docs): `HMAC-SHA256(JSON.stringify(payload), webhookSecret)`
+2. **x-signature** (legacy): `HMAC-SHA256(timestamp:payload_json_sorted, webhookSecret)`
 
-  } catch (error) {
-    console.error('Signature generation failed:', error.message);
+```javascript
+app.post('/api/webhooks/wayu', (req, res) => {
+  const isValid = wayu.validateWebhook(
+    req.headers,
+    req.body,
+    process.env.WAYU_WEBHOOK_SECRET
+  );
+
+  if (!isValid) {
+    return res.status(401).json({ error: 'Invalid signature' });
   }
-}
+
+  const { event, transactionId, data } = req.body;
+
+  switch (event) {
+    case 'payment.completed':
+      // Update transaction status in your database
+      break;
+    case 'payment.failed':
+      // Notify user of failure
+      break;
+    case 'payment.expired':
+      break;
+    case 'payment.refunded':
+      break;
+  }
+
+  res.status(200).json({ received: true });
+});
 ```
 
-### How it Works
+### Webhook events
 
-1.  The `generateSignature()` method gets the current Unix timestamp (in seconds).
-2.  It constructs a message string by concatenating the `publicKey`, a colon (`:`), and the `timestamp`.
-3.  It uses Node.js's built-in `crypto` module to create an HMAC-SHA256 hash of the message, using your `secretKey`.
-4.  It returns the resulting signature as a hexadecimal string, along with the timestamp used to generate it.
-
-### Security Considerations
-
-*   **Secret Key Management:** The `secretKey` should be treated with extreme care. Avoid hardcoding it directly in your client-side code if this SDK is used in a browser environment. Ideally, the signature generation should happen server-side, or the secret key should be scoped tightly and managed securely (e.g., environment variables, secrets management services).
-*   **Timestamp Validation:** The server receiving the request should validate the timestamp to ensure it's within an acceptable window (e.g., 5 minutes) to prevent replay attacks.
+| Event | Description |
+|-------|-------------|
+| `payment.completed` | Payment was successful |
+| `payment.failed` | Payment failed |
+| `payment.expired` | Payment link expired |
+| `payment.refunded` | Payment was refunded |
 
 ## API Reference
 
-### `wayu(publicKey, secretKey)`
+### `new WayuPay(config)`
 
-Factory function to create a new `Wayu` instance.
+Creates a new Wayu Pay client.
 
-*   `publicKey` (string): Your public identifier.
-*   `secretKey` (string): Your secret key for signing.
-*   **Returns:** A new `Wayu` instance.
-*   **Throws:** `Error` if `publicKey` or `secretKey` are missing.
+- `config.publicKey` (string, required): Your public API key
+- `config.secretKey` (string, required): Your secret API key
+- `config.baseUrl` (string, optional): Override the API base URL
+- `config.sandbox` (boolean, optional): Use sandbox environment (auto-detected from `pk_sbox` prefix if not set)
 
-### `wayuClient.generateSignature()`
+### `wayu.checkout.generatePaymentUrl(params)`
 
-Generates the HMAC-SHA256 signature.
+Generates a payment link.
 
-*   **Returns:** `object` - An object containing:
-    *   `signature` (string): The HMAC-SHA256 signature in hexadecimal format.
-    *   `timestamp` (string): The Unix timestamp (seconds) used for generating the signature.
-*   **Throws:** `Error` if signature generation fails.
+- `params.amount` (object, required): `{ value: number, currency: 'USD' | 'VES' }`
+- `params.product_name` (string, required): Product name
+- `params.product_description` (string, optional): Product description
+- `params.merchant_id` (string, optional): Merchant ID for multi-merchant
 
-### `Wayu` (Class)
+Returns: `Promise<{ generatePaymentLink: string, transactionId: string }>`
 
-The underlying class. Can be accessed via `require('wayu-js-sdk').Wayu`.
+### `wayu.validateWebhook(headers, body, webhookSecret)`
 
-*   `new Wayu(publicKey, secretKey)`: Constructor (same parameters as the factory function).
+Validates a webhook request signature. Supports `X-Webhook-Signature` and `x-signature` headers.
 
-## Contributing
+Returns: `boolean`
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### `wayu.generateSignature()`
+
+Generates HMAC-SHA256 signature for API requests (used internally).
+
+Returns: `{ signature: string, timestamp: string }`
+
+## Security
+
+- **Never expose your secret key** in frontend code. Always call the SDK from your backend.
+- Sandbox keys start with `pk_sbox` and `sk_sbox`.
+- The timestamp in API requests must be within the last 5 minutes to prevent replay attacks.
 
 ## License
 
