@@ -1,14 +1,19 @@
 {
   "name": "wayu-js-sdk",
-  "version": "0.1.1-alpha.0",
+  "version": "1.0.0",
   "description": "The official Wayu Pay JavaScript SDK for accepting payments in Venezuela (Pago Móvil, C2P). Generate payment links, verify webhooks, multi-merchant.",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "release": "npm version major -m 'chore: release v%s'"
   },
   "keywords": [
     "wayu",
+    "wayu-pay",
     "sdk",
+    "venezuela",
+    "pago-movil",
+    "c2p",
     "hmac",
     "sha256",
     "signature",
