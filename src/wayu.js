@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
-const DEFAULT_BASE_URL_PRODUCTION = 'https://services-wayu-partners-production.up.railway.app';
-const DEFAULT_BASE_URL_SANDBOX = 'https://services-wayu-partners-sandbox.up.railway.app';
+const DEFAULT_BASE_URL_PRODUCTION = 'https://services-wayu-checkout-production.up.railway.app';
+const DEFAULT_BASE_URL_SANDBOX = 'https://services-wayu-checkout-sandbox.up.railway.app';
 
 class WayuPay {
   /**
@@ -114,12 +114,12 @@ class WayuPay {
     }
 
     const data = await response.json();
-    if (!data.generatePaymentLink || !data.transactionId) {
-      throw new Error('Invalid response from Wayu API: missing generatePaymentLink or transactionId.');
+    if (!data.payment_url || !data.transaction_id) {
+      throw new Error('Invalid response from Wayu API: missing payment_url or transaction_id.');
     }
     return {
-      generatePaymentLink: data.generatePaymentLink,
-      transactionId: data.transactionId,
+      generatePaymentLink: data.payment_url,
+      transactionId: data.transaction_id,
     };
   }
 

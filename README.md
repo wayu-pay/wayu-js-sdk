@@ -43,7 +43,7 @@ const wayu = new WayuPay({
 const wayuProd = new WayuPay({
   publicKey: 'pk_live_...',
   secretKey: 'sk_live_...',
-  sandbox: false, // or baseUrl: 'https://services-wayu-partners-production.up.railway.app'
+  sandbox: false, // or baseUrl: 'https://services-wayu-checkout-production.up.railway.app'
 });
 ```
 
