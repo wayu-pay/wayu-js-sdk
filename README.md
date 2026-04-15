@@ -78,16 +78,16 @@ const result = await wayu.checkout.generatePaymentUrl({
 
 ### Verify webhook signatures
 
-The SDK supports two header schemes for backward compatibility:
+Webhook validation uses a single scheme:
 
-1. **X-Webhook-Signature** (docs): `HMAC-SHA256(JSON.stringify(payload), webhookSecret)`
-2. **x-signature** (legacy): `HMAC-SHA256(timestamp:payload_json_sorted, webhookSecret)`
+1. **X-Signature**: `HMAC-SHA256(raw_body_bytes, webhookSecret)`
 
 ```javascript
-app.post('/api/webhooks/wayu', (req, res) => {
+app.post('/api/webhooks/wayu', express.raw({ type: 'application/json' }), (req, res) => {
+  const rawBody = req.body.toString('utf8');
   const isValid = wayu.validateWebhook(
     req.headers,
-    req.body,
+    rawBody,
     process.env.WAYU_WEBHOOK_SECRET
   );
 
@@ -95,7 +95,7 @@ app.post('/api/webhooks/wayu', (req, res) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  const { event, transactionId, data } = req.body;
+  const { event, transactionId, data } = JSON.parse(rawBody);
 
   switch (event) {
     case 'payment.completed':
@@ -147,7 +147,7 @@ Returns: `Promise<{ generatePaymentLink: string, transactionId: string }>`
 
 ### `wayu.validateWebhook(headers, body, webhookSecret)`
 
-Validates a webhook request signature. Supports `X-Webhook-Signature` and `x-signature` headers.
+Validates webhook signature using `X-Signature` and the exact raw body bytes.
 
 Returns: `boolean`
 
