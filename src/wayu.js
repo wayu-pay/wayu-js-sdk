@@ -125,14 +125,10 @@ class WayuPay {
 
   /**
    * Validates a webhook signature.
-   * Supports two header schemes for backward compatibility:
+   * Scheme: HMAC-SHA256(raw_body_bytes, webhookSecret) sent in X-Signature.
    *
-   * 1. X-Webhook-Signature (docs): HMAC-SHA256(JSON.stringify(payload), webhookSecret)
-   * 2. x-signature (legacy): HMAC-SHA256(timestamp:payload_json_sorted, webhookSecret)
-   *    - Payload must contain 'timestamp' property; it is excluded from the signed JSON
-   *
-   * @param {object} headers - The request headers. Must contain 'x-webhook-signature' or 'x-signature'.
-   * @param {object|string} body - The request body (object or JSON string).
+   * @param {object} headers - The request headers. Must contain 'x-signature'.
+   * @param {string|Buffer} body - The raw request body.
    * @param {string} webhookSecret - The webhook secret used to validate the signature.
    * @returns {boolean} True if the signature is valid, false otherwise.
    * @throws {Error} If required parameters are missing or invalid.
@@ -151,56 +147,27 @@ class WayuPay {
     const headersLower = Object.fromEntries(
       Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])
     );
-    const webhookSig = headersLower['x-webhook-signature'];
-    const legacySig = headersLower['x-signature'];
-
-    let signatureHeader;
-    let useLegacyAlgorithm = false;
-    if (webhookSig && typeof webhookSig === 'string') {
-      signatureHeader = webhookSig;
-    } else if (legacySig && typeof legacySig === 'string') {
-      signatureHeader = legacySig;
-      useLegacyAlgorithm = true;
-    } else {
-      throw new Error('Either x-webhook-signature or x-signature header is required.');
+    const signatureHeader = headersLower['x-signature'];
+    if (!signatureHeader || typeof signatureHeader !== 'string') {
+      throw new Error('x-signature header is required.');
     }
 
     const receivedSignature = signatureHeader.startsWith('sha256=')
       ? signatureHeader.substring(7)
       : signatureHeader;
 
-    let payload;
-    if (typeof body === 'string') {
-      try {
-        payload = JSON.parse(body);
-      } catch (error) {
-        throw new Error(`Invalid JSON in body: ${error.message}`);
-      }
+    let rawBody;
+    if (Buffer.isBuffer(body)) {
+      rawBody = body;
+    } else if (typeof body === 'string') {
+      rawBody = Buffer.from(body, 'utf8');
     } else {
-      payload = body;
-    }
-
-    let message;
-    if (useLegacyAlgorithm) {
-      if (!payload.timestamp && payload.timestamp !== 0) {
-        throw new Error('Body must contain a timestamp property for x-signature validation.');
-      }
-      const timestamp = String(payload.timestamp);
-      const payloadForSigning = { ...payload };
-      delete payloadForSigning.timestamp;
-      const sortedKeys = Object.keys(payloadForSigning).sort();
-      const sortedPayload = {};
-      for (const key of sortedKeys) {
-        sortedPayload[key] = payloadForSigning[key];
-      }
-      message = `${timestamp}:${JSON.stringify(sortedPayload)}`;
-    } else {
-      message = JSON.stringify(payload);
+      throw new Error('Body must be a raw string or Buffer.');
     }
 
     try {
       const hmac = crypto.createHmac('sha256', webhookSecret);
-      hmac.update(message);
+      hmac.update(rawBody);
       const calculatedSignature = hmac.digest('hex');
 
       const receivedBuffer = Buffer.from(receivedSignature, 'hex');
