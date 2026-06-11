@@ -125,13 +125,12 @@ class WayuPay {
 
   /**
    * Validates a webhook signature.
-   * Supports two header schemes for backward compatibility:
+   * Algorithm: HMAC-SHA256(JSON.stringify(payload), webhookSecret)
    *
-   * 1. X-Webhook-Signature (docs): HMAC-SHA256(JSON.stringify(payload), webhookSecret)
-   * 2. x-signature (legacy): HMAC-SHA256(timestamp:payload_json_sorted, webhookSecret)
-   *    - Payload must contain 'timestamp' property; it is excluded from the signed JSON
+   * Accepts either x-signature or x-webhook-signature header (x-signature takes priority).
+   * The header value may include an optional "sha256=" prefix.
    *
-   * @param {object} headers - The request headers. Must contain 'x-webhook-signature' or 'x-signature'.
+   * @param {object} headers - The request headers. Must contain 'x-signature' or 'x-webhook-signature'.
    * @param {object|string} body - The request body (object or JSON string).
    * @param {string} webhookSecret - The webhook secret used to validate the signature.
    * @returns {boolean} True if the signature is valid, false otherwise.
@@ -151,18 +150,12 @@ class WayuPay {
     const headersLower = Object.fromEntries(
       Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])
     );
-    const webhookSig = headersLower['x-webhook-signature'];
-    const legacySig = headersLower['x-signature'];
+    const signatureHeader =
+      (typeof headersLower['x-signature'] === 'string' && headersLower['x-signature']) ||
+      (typeof headersLower['x-webhook-signature'] === 'string' && headersLower['x-webhook-signature']);
 
-    let signatureHeader;
-    let useLegacyAlgorithm = false;
-    if (webhookSig && typeof webhookSig === 'string') {
-      signatureHeader = webhookSig;
-    } else if (legacySig && typeof legacySig === 'string') {
-      signatureHeader = legacySig;
-      useLegacyAlgorithm = true;
-    } else {
-      throw new Error('Either x-webhook-signature or x-signature header is required.');
+    if (!signatureHeader) {
+      throw new Error('Either x-signature or x-webhook-signature header is required.');
     }
 
     const receivedSignature = signatureHeader.startsWith('sha256=')
@@ -180,23 +173,7 @@ class WayuPay {
       payload = body;
     }
 
-    let message;
-    if (useLegacyAlgorithm) {
-      if (!payload.timestamp && payload.timestamp !== 0) {
-        throw new Error('Body must contain a timestamp property for x-signature validation.');
-      }
-      const timestamp = String(payload.timestamp);
-      const payloadForSigning = { ...payload };
-      delete payloadForSigning.timestamp;
-      const sortedKeys = Object.keys(payloadForSigning).sort();
-      const sortedPayload = {};
-      for (const key of sortedKeys) {
-        sortedPayload[key] = payloadForSigning[key];
-      }
-      message = `${timestamp}:${JSON.stringify(sortedPayload)}`;
-    } else {
-      message = JSON.stringify(payload);
-    }
+    const message = JSON.stringify(payload);
 
     try {
       const hmac = crypto.createHmac('sha256', webhookSecret);
