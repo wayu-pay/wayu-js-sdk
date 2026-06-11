@@ -78,10 +78,9 @@ const result = await wayu.checkout.generatePaymentUrl({
 
 ### Verify webhook signatures
 
-The SDK supports two header schemes for backward compatibility:
-
-1. **X-Webhook-Signature** (docs): `HMAC-SHA256(JSON.stringify(payload), webhookSecret)`
-2. **x-signature** (legacy): `HMAC-SHA256(timestamp:payload_json_sorted, webhookSecret)`
+Webhook signatures are validated with `HMAC-SHA256(JSON.stringify(payload), webhookSecret)`.
+Both `x-signature` and `x-webhook-signature` headers are supported using the same algorithm.
+If both headers are present, `x-signature` takes priority.
 
 ```javascript
 app.post('/api/webhooks/wayu', (req, res) => {
@@ -147,7 +146,7 @@ Returns: `Promise<{ generatePaymentLink: string, transactionId: string }>`
 
 ### `wayu.validateWebhook(headers, body, webhookSecret)`
 
-Validates a webhook request signature. Supports `X-Webhook-Signature` and `x-signature` headers.
+Validates a webhook request signature. Accepts `x-signature` or `x-webhook-signature` (same HMAC algorithm; `x-signature` takes priority when both are present).
 
 Returns: `boolean`
 
