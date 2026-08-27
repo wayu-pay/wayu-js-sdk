@@ -4,7 +4,7 @@
   "description": "The official Wayu Pay JavaScript SDK for accepting payments in Venezuela (Pago Móvil, C2P). Generate payment links, verify webhooks, multi-merchant.",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/*.test.js",
     "release": "npm version major -m 'chore: release v%s'"
   },
   "keywords": [

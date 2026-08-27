@@ -9,7 +9,7 @@ The official Wayu Pay JavaScript SDK for accepting payments in Venezuela (Pago M
 
 Wayu Pay lets you accept payments in Venezuela with a simple API. This SDK handles authentication (HMAC-SHA256 signatures), payment link generation, and webhook signature verification.
 
-- **Payment Links**: Generate checkout URLs in USD or VES
+- **Payment Links**: Generate checkout URLs in USD, EUR, or VES (foreign currencies settle in VES)
 - **Webhooks**: Verify and process real-time payment notifications
 - **Multi-Merchant**: Route payments to different merchants from a single integration
 
@@ -43,7 +43,7 @@ const wayu = new WayuPay({
 const wayuProd = new WayuPay({
   publicKey: 'pk_live_...',
   secretKey: 'sk_live_...',
-  sandbox: false, // or baseUrl: 'https://services-wayu-checkout-production.up.railway.app'
+  sandbox: false, // or baseUrl: 'https://api.wayu.app'
 });
 ```
 
@@ -63,6 +63,18 @@ await saveTransaction(result.transactionId);
 // window.location.href = result.generatePaymentLink;
 console.log(result.generatePaymentLink);
 console.log(result.transactionId);
+```
+
+### Generate a payment link in EUR
+
+USD and EUR amounts are converted to VES at the BCV rate when the link is created. Settlement and payment methods remain in VES.
+
+```javascript
+const result = await wayu.checkout.generatePaymentUrl({
+  amount: { value: 20.0, currency: 'EUR' },
+  product_name: 'Plan Euro',
+  product_description: 'Cobro denominado en euros',
+});
 ```
 
 ### Multi-merchant
@@ -137,7 +149,7 @@ Creates a new Wayu Pay client.
 
 Generates a payment link.
 
-- `params.amount` (object, required): `{ value: number, currency: 'USD' | 'VES' }`
+- `params.amount` (object, required): `{ value: number, currency: 'USD' | 'VES' | 'EUR' }` (case-insensitive)
 - `params.product_name` (string, required): Product name
 - `params.product_description` (string, optional): Product description
 - `params.merchant_id` (string, optional): Merchant ID for multi-merchant

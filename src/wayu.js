@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 
-const DEFAULT_BASE_URL_PRODUCTION = 'https://services-wayu-checkout-production.up.railway.app';
-const DEFAULT_BASE_URL_SANDBOX = 'https://services-wayu-checkout-sandbox.up.railway.app';
+const DEFAULT_BASE_URL_PRODUCTION = 'https://api.wayu.app';
+const DEFAULT_BASE_URL_SANDBOX = 'https://api-sandbox.wayu.app';
+const SUPPORTED_CURRENCIES = ['USD', 'VES', 'EUR'];
 
 class WayuPay {
   /**
@@ -62,7 +63,7 @@ class WayuPay {
    * @param {object} params - Payment parameters.
    * @param {object} params.amount - Amount object.
    * @param {number} params.amount.value - Payment amount.
-   * @param {string} params.amount.currency - "USD" or "VES".
+   * @param {string} params.amount.currency - "USD", "VES", or "EUR" (case-insensitive).
    * @param {string} params.product_name - Product name.
    * @param {string} [params.product_description] - Product description.
    * @param {string} [params.merchant_id] - Merchant ID (for multi-merchant).
@@ -81,15 +82,16 @@ class WayuPay {
     if (typeof value !== 'number' || value <= 0) {
       throw new Error('amount.value must be a positive number.');
     }
-    if (!currency || !['USD', 'VES'].includes(currency)) {
-      throw new Error('amount.currency must be "USD" or "VES".');
+    const normalizedCurrency = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
+    if (!SUPPORTED_CURRENCIES.includes(normalizedCurrency)) {
+      throw new Error('amount.currency must be "USD", "VES", or "EUR".');
     }
     if (!product_name || typeof product_name !== 'string') {
       throw new Error('product_name is required and must be a string.');
     }
 
     const body = {
-      amount: { value, currency },
+      amount: { value, currency: normalizedCurrency },
       product_name,
       ...(product_description != null && { product_description }),
       ...(merchant_id != null && { merchant_id }),
