@@ -1,49 +1,22 @@
-# Wayu JS SDK
+# Wayu Pay SDK
 
-The official Wayu Pay JavaScript SDK for accepting payments in Venezuela (Pago Móvil and C2P). Generate payment links, receive webhook notifications, and manage multi-merchant payments.
+Official JavaScript SDK for Wayu Pay — accept payments in Venezuela (Pago Móvil C2P/P2P).
 
-[![npm version](https://badge.fury.io/js/wayu-js-sdk.svg)](https://badge.fury.io/js/wayu-js-sdk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-## Overview
-
-Wayu Pay lets you accept payments in Venezuela with a simple API. This SDK handles authentication (HMAC-SHA256 signatures), payment link generation, and webhook signature verification.
-
-- **Payment Links**: Generate checkout URLs in USD, EUR, or VES (foreign currencies settle in VES)
-- **Webhooks**: Verify and process real-time payment notifications
-- **Multi-Merchant**: Route payments to different merchants from a single integration
-
-## Installation
+## Install
 
 ```bash
 npm install wayu-js-sdk
-# or
-yarn add wayu-js-sdk
-# or
-pnpm add wayu-js-sdk
 ```
 
-## Usage
-
-### Initialize the client
+## Quick start
 
 ```javascript
-// CommonJS
 const WayuPay = require('wayu-js-sdk');
 
-// ESM
-import WayuPay from 'wayu-js-sdk';
-
 const wayu = new WayuPay({
-  publicKey: 'pk_sbox_...',
-  secretKey: 'sk_sbox_...',
-});
-
-// Optional: use sandbox explicitly or override base URL
-const wayuProd = new WayuPay({
-  publicKey: 'pk_live_...',
-  secretKey: 'sk_live_...',
-  sandbox: false, // or baseUrl: 'https://api.wayu.app'
+  publicKey: process.env.WAYU_PUBLIC_KEY,
+  secretKey: process.env.WAYU_SECRET_KEY,
+  // sandbox: true, // auto-detected from pk_sbox_* keys
 });
 ```
 
@@ -56,49 +29,36 @@ const result = await wayu.checkout.generatePaymentUrl({
   product_description: 'Suscripción mensual',
 });
 
-// Save the transactionId in your system
 await saveTransaction(result.transactionId);
-
-// Redirect the user to checkout
-// window.location.href = result.generatePaymentLink;
 console.log(result.generatePaymentLink);
-console.log(result.transactionId);
 ```
 
-### Generate a payment link in EUR
+### Request a refund (C2P / P2P)
 
-USD and EUR amounts are converted to VES at the BCV rate when the link is created. Settlement and payment methods remain in VES.
-
-```javascript
-const result = await wayu.checkout.generatePaymentUrl({
-  amount: { value: 20.0, currency: 'EUR' },
-  product_name: 'Plan Euro',
-  product_description: 'Cobro denominado en euros',
-});
-```
-
-### Multi-merchant
+Refunds return funds to the original payer via Pago Móvil P2P. Only `succeeded` or `partially_refunded` C2P/P2P transactions are eligible. Omit `amount` to refund the remaining balance.
 
 ```javascript
-const result = await wayu.checkout.generatePaymentUrl({
-  amount: { value: 50.0, currency: 'USD' },
-  product_name: 'Producto del Merchant',
-  product_description: 'El pago va directo al merchant',
-  merchant_id: 'merch_001',
+const refund = await wayu.checkout.requestRefund({
+  transactionId: 'cda07872-2321-4963-b8d2-8d78ddd2aad6',
+  // amount: 100.5, // optional partial amount in VES
+  reason: 'Customer request',
 });
+
+console.log(refund.refund_id, refund.transaction_status);
 ```
 
 ### Verify webhook signatures
 
-Webhook signatures are validated with `HMAC-SHA256(JSON.stringify(payload), webhookSecret)`.
-Both `x-signature` and `x-webhook-signature` headers are supported using the same algorithm.
-If both headers are present, `x-signature` takes priority.
+Prefer verifying over the **raw HTTP body bytes** (`HMAC-SHA256(webhook_secret, raw_body)`). The SDK helper also accepts a parsed object (it re-stringifies with `JSON.stringify`), which can diverge from the exact bytes Wayu signed — use the raw body string in production.
+
+Both `x-signature` and `x-webhook-signature` are supported; `x-signature` wins if both are present. An optional `sha256=` prefix is stripped.
 
 ```javascript
-app.post('/api/webhooks/wayu', (req, res) => {
+app.post('/api/webhooks/wayu', express.raw({ type: 'application/json' }), (req, res) => {
+  const rawBody = req.body.toString('utf8');
   const isValid = wayu.validateWebhook(
     req.headers,
-    req.body,
+    rawBody,
     process.env.WAYU_WEBHOOK_SECRET
   );
 
@@ -106,65 +66,59 @@ app.post('/api/webhooks/wayu', (req, res) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  const { event, transactionId, data } = req.body;
-
-  switch (event) {
-    case 'payment.completed':
-      // Update transaction status in your database
-      break;
-    case 'payment.failed':
-      // Notify user of failure
-      break;
-    case 'payment.expired':
-      break;
-    case 'payment.refunded':
-      break;
-  }
+  const payload = JSON.parse(rawBody);
+  // Payment success: status === "succeeded"
+  // Refund: status === "refunded" | "partially_refunded"
+  //   with refund_id and refund_amount; amount is the original order amount
+  const { transaction_id, status, amount, refund_id, refund_amount } = payload;
 
   res.status(200).json({ received: true });
 });
 ```
 
-### Webhook events
+### Webhook payload
 
-| Event | Description |
-|-------|-------------|
-| `payment.completed` | Payment was successful |
-| `payment.failed` | Payment failed |
-| `payment.expired` | Payment link expired |
-| `payment.refunded` | Payment was refunded |
+| Field | When | Description |
+|-------|------|-------------|
+| `transaction_id` | always | Transaction UUID |
+| `status` | always | `succeeded`, `refunded`, or `partially_refunded` |
+| `amount` | always | Original order amount (VES) |
+| `timestamp` | always | Unix seconds |
+| `refund_id` | refund | Refund UUID |
+| `refund_amount` | refund | Amount refunded in this event (VES) |
 
 ## API Reference
 
 ### `new WayuPay(config)`
 
-Creates a new Wayu Pay client.
-
-- `config.publicKey` (string, required): Your public API key
-- `config.secretKey` (string, required): Your secret API key
-- `config.baseUrl` (string, optional): Override the API base URL
-- `config.sandbox` (boolean, optional): Use sandbox environment (auto-detected from `pk_sbox` prefix if not set)
+- `config.publicKey` (string, required)
+- `config.secretKey` (string, required)
+- `config.baseUrl` (string, optional)
+- `config.sandbox` (boolean, optional): auto-detected from `pk_sbox` prefix if omitted
 
 ### `wayu.checkout.generatePaymentUrl(params)`
 
-Generates a payment link.
-
-- `params.amount` (object, required): `{ value: number, currency: 'USD' | 'VES' | 'EUR' }` (case-insensitive)
-- `params.product_name` (string, required): Product name
-- `params.product_description` (string, optional): Product description
-- `params.merchant_id` (string, optional): Merchant ID for multi-merchant
+- `params.amount` `{ value: number, currency: 'USD' | 'VES' | 'EUR' }`
+- `params.product_name` (string, required)
+- `params.product_description` (string, optional)
+- `params.merchant_id` (string, optional)
 
 Returns: `Promise<{ generatePaymentLink: string, transactionId: string }>`
 
-### `wayu.validateWebhook(headers, body, webhookSecret)`
+### `wayu.checkout.requestRefund(params)`
 
-Validates a webhook request signature. Accepts `x-signature` or `x-webhook-signature` (same HMAC algorithm; `x-signature` takes priority when both are present).
+- `params.transactionId` (string, required)
+- `params.amount` (number, optional): partial amount in VES; omit for remaining balance
+- `params.reason` (string, optional)
+- `params.idempotencyKey` (string, optional): generated if omitted
+
+Returns: `Promise` with Checkout refund response (`refund_id`, `transaction_id`, `amount`, `currency`, `status`, `transaction_status`, …).
+
+### `wayu.validateWebhook(headers, body, webhookSecret)`
 
 Returns: `boolean`
 
 ### `wayu.generateSignature()`
-
-Generates HMAC-SHA256 signature for API requests (used internally).
 
 Returns: `{ signature: string, timestamp: string }`
 

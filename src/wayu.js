@@ -33,6 +33,7 @@ class WayuPay {
 
     this.checkout = {
       generatePaymentUrl: this._generatePaymentUrl.bind(this),
+      requestRefund: this._requestRefund.bind(this),
     };
   }
 
@@ -126,14 +127,72 @@ class WayuPay {
   }
 
   /**
+   * Requests a refund for a succeeded (or partially refunded) C2P/P2P transaction.
+   * @param {object} params
+   * @param {string} params.transactionId - Transaction UUID.
+   * @param {number} [params.amount] - Partial amount; omit for full remaining balance.
+   * @param {string} [params.reason] - Optional reason.
+   * @param {string} [params.idempotencyKey] - Optional idempotency key (generated if omitted).
+   * @returns {Promise<object>} Refund response from Checkout API.
+   */
+  async _requestRefund(params) {
+    if (!params || typeof params !== 'object') {
+      throw new Error('Refund parameters are required.');
+    }
+    const { transactionId, amount, reason, idempotencyKey } = params;
+    if (!transactionId || typeof transactionId !== 'string') {
+      throw new Error('transactionId is required and must be a string.');
+    }
+    if (amount != null && (typeof amount !== 'number' || amount <= 0)) {
+      throw new Error('amount must be a positive number when provided.');
+    }
+
+    const body = {
+      transaction_id: transactionId,
+      ...(amount != null && { amount }),
+      ...(reason != null && { reason }),
+    };
+
+    const { signature, timestamp } = this.generateSignature();
+    const key =
+      typeof idempotencyKey === 'string' && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : crypto.randomUUID();
+    const url = `${this.baseUrl}/checkout/refunds`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Public-Key': this.publicKey,
+        'X-Signature': signature,
+        'X-Timestamp': timestamp,
+        'X-Idempotency-Key': key,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Wayu API error (${response.status}): ${text || response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
    * Validates a webhook signature.
-   * Algorithm: HMAC-SHA256(JSON.stringify(payload), webhookSecret)
+   * Prefer verifying over the raw HTTP body bytes (HMAC-SHA256 of raw body).
+   * This helper accepts a string body or object; for production refunds/payments
+   * use the raw body string as received.
+   *
+   * Payload may be payment success (`status: "succeeded"`) or refund
+   * (`status: "refunded"|"partially_refunded"` with `refund_id` and `refund_amount`).
    *
    * Accepts either x-signature or x-webhook-signature header (x-signature takes priority).
    * The header value may include an optional "sha256=" prefix.
    *
    * @param {object} headers - The request headers. Must contain 'x-signature' or 'x-webhook-signature'.
-   * @param {object|string} body - The request body (object or JSON string).
+   * @param {object|string} body - The request body (object or JSON string / raw body).
    * @param {string} webhookSecret - The webhook secret used to validate the signature.
    * @returns {boolean} True if the signature is valid, false otherwise.
    * @throws {Error} If required parameters are missing or invalid.
