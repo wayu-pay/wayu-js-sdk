@@ -127,7 +127,7 @@ class WayuPay {
   }
 
   /**
-   * Requests a refund for a succeeded (or partially refunded) C2P/P2P transaction.
+   * Requests a refund for a succeeded (or partially refunded) C2P, P2P, or Instant Debit transaction.
    * @param {object} params
    * @param {string} params.transactionId - Transaction UUID.
    * @param {number} [params.amount] - Partial amount; omit for full remaining balance.

@@ -1,6 +1,6 @@
 # Wayu Pay SDK
 
-Official JavaScript SDK for Wayu Pay — accept payments in Venezuela (Pago Móvil C2P/P2P).
+Official JavaScript SDK for Wayu Pay — accept payments in Venezuela (Pago Móvil C2P/P2P and Instant Debit).
 
 ## Install
 
@@ -33,9 +33,9 @@ await saveTransaction(result.transactionId);
 console.log(result.generatePaymentLink);
 ```
 
-### Request a refund (C2P / P2P)
+### Request a refund (C2P / P2P / Instant Debit)
 
-Refunds return funds to the original payer via Pago Móvil P2P. Only `succeeded` or `partially_refunded` C2P/P2P transactions are eligible. Omit `amount` to refund the remaining balance.
+Refunds return funds to the original payer via Pago Móvil P2P. Only `succeeded` or `partially_refunded` C2P, P2P, or Instant Debit transactions with persisted payer data are eligible. Historical Instant Debit charges without payer data are not refundable. Omit `amount` to refund the remaining balance.
 
 ```javascript
 const refund = await wayu.checkout.requestRefund({
